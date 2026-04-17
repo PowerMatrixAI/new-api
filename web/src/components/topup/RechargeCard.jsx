@@ -56,10 +56,13 @@ const RechargeCard = ({
   t,
   enableOnlineTopUp,
   enableStripeTopUp,
+  enableAlipayTopUp,
   enableCreemTopUp,
   creemProducts,
   creemPreTopUp,
   presetAmounts,
+  topupInfo,
+  alipayTopupInfo,
   selectedPreset,
   selectPresetAmount,
   formatLargeNumber,
@@ -85,7 +88,6 @@ const RechargeCard = ({
   userState,
   renderQuota,
   statusLoading,
-  topupInfo,
   onOpenHistory,
   enableWaffoTopUp,
   waffoTopUp,
@@ -227,19 +229,19 @@ const RechargeCard = ({
           <div className='py-8 flex justify-center'>
             <Spin size='large' />
           </div>
-        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp || enableWaffoTopUp ? (
+        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp || enableWaffoTopUp || enableAlipayTopUp ? (
           <Form
             getFormApi={(api) => (onlineFormApiRef.current = api)}
             initValues={{ topUpCount: topUpCount }}
           >
             <div className='space-y-6'>
-              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp || enableAlipayTopUp) && (
                 <Row gutter={12}>
                   <Col xs={24} sm={24} md={24} lg={10} xl={10}>
                     <Form.InputNumber
                       field='topUpCount'
                       label={t('充值数量')}
-                      disabled={!enableOnlineTopUp && !enableStripeTopUp && !enableWaffoTopUp}
+                      disabled={!enableOnlineTopUp && !enableStripeTopUp && !enableWaffoTopUp && !enableAlipayTopUp}
                       placeholder={
                         t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
                       }
@@ -295,13 +297,29 @@ const RechargeCard = ({
                   <Col xs={24} sm={24} md={24} lg={14} xl={14}>
                     <Form.Slot label={t('选择支付方式')}>
                         <Space wrap>
-                          {payMethods.filter(m => m.type !== 'waffo').map((payMethod) => {
-                            const minTopupVal = Number(payMethod.min_topup) || 0;
-                            const isStripe = payMethod.type === 'stripe';
-                            const disabled =
-                              (!enableOnlineTopUp && !isStripe) ||
-                              (!enableStripeTopUp && isStripe) ||
-                              minTopupVal > Number(topUpCount || 0);
+                          {payMethods
+                            .filter((m) => {
+                              if (m.type === 'waffo') return false;
+                              if (m.type === 'stripe') return enableStripeTopUp;
+                              if (m.type === 'alipay_native')
+                                return enableAlipayTopUp;
+                              return enableOnlineTopUp;
+                            })
+                            .map((payMethod) => {
+                              const minTopupVal =
+                                Number(payMethod.min_topup) || 0;
+                              const disabled =
+                                minTopupVal > Number(topUpCount || 0);
+
+                              const isAlipayNative =
+                                payMethod.type === 'alipay_native';
+                              const displayName = isAlipayNative
+                                ? t('支付宝')
+                                : payMethod.type === 'alipay'
+                                ? t('支付宝 (通道1)')
+                                : payMethod.type === 'wxpay'
+                                ? t('微信 (通道1)')
+                                : payMethod.name;
 
                             const buttonEl = (
                               <Button
@@ -314,7 +332,7 @@ const RechargeCard = ({
                                   paymentLoading && payWay === payMethod.type
                                 }
                                 icon={
-                                  payMethod.type === 'alipay' ? (
+                                  payMethod.type === 'alipay' || payMethod.type === 'alipay_native' ? (
                                     <SiAlipay size={18} color='#1677FF' />
                                   ) : payMethod.type === 'wxpay' ? (
                                     <SiWechat size={18} color='#07C160' />
@@ -332,7 +350,7 @@ const RechargeCard = ({
                                 }
                                 className='!rounded-lg !px-4 !py-2'
                               >
-                                {payMethod.name}
+                                {displayName}
                               </Button>
                             );
 
@@ -361,7 +379,7 @@ const RechargeCard = ({
                 </Row>
               )}
 
-              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp || enableAlipayTopUp) && (
                 <Form.Slot
                   label={
                     <div className='flex items-center gap-2'>
@@ -387,9 +405,17 @@ const RechargeCard = ({
                 >
                   <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2'>
                     {presetAmounts.map((preset, index) => {
-                      const discount =
-                        preset.discount || topupInfo?.discount?.[preset.value] || 1.0;
-                      const originalPrice = preset.value * priceRatio;
+                      let discount = 1.0;
+                      let unitPrice = priceRatio;
+
+                      if (payWay === 'alipay_native') {
+                        discount = preset.discount || alipayTopupInfo?.discount?.[preset.value] || 1.0;
+                        unitPrice = alipayTopupInfo?.unit_price || 1;
+                      } else {
+                        discount = preset.discount || topupInfo?.discount?.[preset.value] || 1.0;
+                      }
+
+                      const originalPrice = preset.value * unitPrice;
                       const discountedPrice = originalPrice * discount;
                       const hasDiscount = discount < 1.0;
                       const actualPay = discountedPrice;

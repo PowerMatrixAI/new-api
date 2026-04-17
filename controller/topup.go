@@ -48,6 +48,26 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// 如果启用了支付宝原生支付，添加到支付方法列表
+	enableAlipay := setting.AlipayAppId != "" && setting.AlipayPrivateKey != "" && setting.AlipayPublicKey != ""
+	if enableAlipay {
+		hasAlipay := false
+		for _, method := range payMethods {
+			if method["type"] == PaymentMethodAlipay {
+				hasAlipay = true
+				break
+			}
+		}
+		if !hasAlipay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "支付宝",
+				"type":      PaymentMethodAlipay,
+				"color":     "rgba(var(--semi-blue-6), 1)",
+				"min_topup": strconv.Itoa(setting.AlipayMinTopUp),
+			})
+		}
+	}
+
 	// 如果启用了 Waffo 支付，添加到支付方法列表
 	enableWaffo := setting.WaffoEnabled &&
 		((!setting.WaffoSandbox &&
@@ -82,20 +102,25 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup": enableWaffo,
+		"enable_alipay_topup": enableAlipay,
+		"enable_waffo_topup":  enableWaffo,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products": setting.CreemProducts,
-		"pay_methods":         payMethods,
-		"min_topup":           operation_setting.MinTopUp,
-		"stripe_min_topup":    setting.StripeMinTopUp,
-		"waffo_min_topup":     setting.WaffoMinTopUp,
-		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		"creem_products":         setting.CreemProducts,
+		"pay_methods":            payMethods,
+		"min_topup":              operation_setting.MinTopUp,
+		"stripe_min_topup":       setting.StripeMinTopUp,
+		"waffo_min_topup":        setting.WaffoMinTopUp,
+		"alipay_min_topup":       setting.AlipayMinTopUp,
+		"amount_options":         operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":               operation_setting.GetPaymentSetting().AmountDiscount,
+		"alipay_amount_options":  setting.GetAlipayAmountOptions(),
+		"alipay_amount_discount": setting.GetAlipayAmountDiscount(),
+		"alipay_unit_price":      setting.AlipayUnitPrice,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -463,4 +488,3 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
-

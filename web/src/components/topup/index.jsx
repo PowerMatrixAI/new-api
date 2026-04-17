@@ -63,6 +63,9 @@ const TopUp = () => {
   const [enableStripeTopUp, setEnableStripeTopUp] = useState(
     statusState?.status?.enable_stripe_topup || false,
   );
+  const [enableAlipayTopUp, setEnableAlipayTopUp] = useState(
+    statusState?.status?.enable_alipay_topup || false,
+  );
   const [statusLoading, setStatusLoading] = useState(true);
 
   // Creem 相关状态
@@ -110,6 +113,12 @@ const TopUp = () => {
   const [topupInfo, setTopupInfo] = useState({
     amount_options: [],
     discount: {},
+  });
+
+  // 支付宝专属充值配置
+  const [alipayTopupInfo, setAlipayTopupInfo] = useState({
+    discount: {},
+    unit_price: 1,
   });
 
   const topUp = async () => {
@@ -162,6 +171,11 @@ const TopUp = () => {
         showError(t('管理员未开启Stripe充值！'));
         return;
       }
+    } else if (payment === 'alipay_native') {
+      if (!enableAlipayTopUp) {
+        showError(t('管理员未开启支付宝充值！'));
+        return;
+      }
     } else {
       if (!enableOnlineTopUp) {
         showError(t('管理员未开启在线充值！'));
@@ -174,6 +188,8 @@ const TopUp = () => {
     try {
       if (payment === 'stripe') {
         await getStripeAmount();
+      } else if (payment === 'alipay_native') {
+        await getAlipayAmount();
       } else {
         await getAmount();
       }
@@ -196,6 +212,11 @@ const TopUp = () => {
       if (amount === 0) {
         await getStripeAmount();
       }
+    } else if (payWay === 'alipay_native') {
+      // 支付宝原生支付处理
+      if (amount === 0) {
+        await getAlipayAmount();
+      }
     } else {
       // 普通支付处理
       if (amount === 0) {
@@ -216,6 +237,12 @@ const TopUp = () => {
           amount: parseInt(topUpCount),
           payment_method: 'stripe',
         });
+      } else if (payWay === 'alipay_native') {
+        // 支付宝原生支付请求
+        res = await API.post('/api/user/alipay/pay', {
+          amount: parseInt(topUpCount),
+          payment_method: 'alipay_native',
+        });
       } else {
         // 普通支付请求
         res = await API.post('/api/user/pay', {
@@ -227,8 +254,8 @@ const TopUp = () => {
       if (res !== undefined) {
         const { message, data } = res.data;
         if (message === 'success') {
-          if (payWay === 'stripe') {
-            // Stripe 支付回调处理
+          if (payWay === 'stripe' || payWay === 'alipay_native') {
+            // 支付回调处理
             window.open(data.pay_link, '_blank');
           } else {
             // 普通支付表单提交
@@ -481,16 +508,20 @@ const TopUp = () => {
           const enableStripeTopUp = data.enable_stripe_topup || false;
           const enableOnlineTopUp = data.enable_online_topup || false;
           const enableCreemTopUp = data.enable_creem_topup || false;
+          const enableAlipayTopUp = data.enable_alipay_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
               ? data.stripe_min_topup
               : data.enable_waffo_topup
                 ? data.waffo_min_topup
-                : 1;
+                : enableAlipayTopUp
+                  ? data.alipay_min_topup
+                  : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
+          setEnableAlipayTopUp(enableAlipayTopUp);
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
@@ -506,8 +537,13 @@ const TopUp = () => {
             setCreemProducts([]);
           }
 
+          setAlipayTopupInfo({
+            discount: data.alipay_amount_discount || {},
+            unit_price: data.alipay_unit_price || 1,
+          });
+
           // 如果没有自定义充值数量选项，根据最小充值金额生成预设充值额度选项
-          if (topupInfo.amount_options.length === 0) {
+          if (data.amount_options.length === 0) {
             setPresetAmounts(generatePresetAmounts(minTopUpValue));
           }
 
@@ -667,6 +703,33 @@ const TopUp = () => {
     }
   };
 
+  const getAlipayAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/alipay/amount', {
+        amount: parseFloat(value),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          setAmount(parseFloat(data));
+        } else {
+          setAmount(0);
+          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+        }
+      } else {
+        showError(res);
+      }
+    } catch (err) {
+      // amount fetch failed silently
+    } finally {
+      setAmountLoading(false);
+    }
+  };
+
   const handleCancel = () => {
     setOpen(false);
   };
@@ -694,9 +757,19 @@ const TopUp = () => {
     setSelectedPreset(preset.value);
 
     // 计算实际支付金额，考虑折扣
-    const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
-    const discountedAmount = preset.value * priceRatio * discount;
-    setAmount(discountedAmount);
+    let discount = 1.0;
+    let unitPrice = priceRatio;
+
+    if (payWay === 'alipay_native') {
+      discount = preset.discount || alipayTopupInfo.discount[preset.value] || 1.0;
+      unitPrice = alipayTopupInfo.unit_price || 1;
+      const discountedAmount = preset.value * unitPrice * discount;
+      setAmount(discountedAmount);
+    } else {
+      discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
+      const discountedAmount = preset.value * unitPrice * discount;
+      setAmount(discountedAmount);
+    }
   };
 
   // 格式化大数字显示
@@ -785,6 +858,7 @@ const TopUp = () => {
           t={t}
           enableOnlineTopUp={enableOnlineTopUp}
           enableStripeTopUp={enableStripeTopUp}
+          enableAlipayTopUp={enableAlipayTopUp}
           enableCreemTopUp={enableCreemTopUp}
           creemProducts={creemProducts}
           creemPreTopUp={creemPreTopUp}
@@ -792,6 +866,8 @@ const TopUp = () => {
           waffoTopUp={waffoTopUp}
           waffoPayMethods={waffoPayMethods}
           presetAmounts={presetAmounts}
+          topupInfo={topupInfo}
+          alipayTopupInfo={alipayTopupInfo}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
           formatLargeNumber={formatLargeNumber}
@@ -817,7 +893,6 @@ const TopUp = () => {
           userState={userState}
           renderQuota={renderQuota}
           statusLoading={statusLoading}
-          topupInfo={topupInfo}
           onOpenHistory={handleOpenHistory}
           subscriptionLoading={subscriptionLoading}
           subscriptionPlans={subscriptionPlans}
