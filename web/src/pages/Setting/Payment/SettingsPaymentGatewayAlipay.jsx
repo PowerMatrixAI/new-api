@@ -30,10 +30,6 @@ export default function SettingsPaymentGatewayAlipay(props) {
     AlipayPrivateKey: '',
     AlipayPublicKey: '',
     AlipaySandbox: false,
-    AlipayUnitPrice: 7.3,
-    AlipayMinTopUp: 1,
-    AlipayAmountOptions: '',
-    AlipayAmountDiscount: '{}',
   });
   const [originInputs, setOriginInputs] = useState({});
   const formApiRef = useRef(null);
@@ -45,16 +41,6 @@ export default function SettingsPaymentGatewayAlipay(props) {
         AlipayPrivateKey: props.options.AlipayPrivateKey || '',
         AlipayPublicKey: props.options.AlipayPublicKey || '',
         AlipaySandbox: props.options.AlipaySandbox === true || props.options.AlipaySandbox === 'true',
-        AlipayUnitPrice:
-          props.options.AlipayUnitPrice !== undefined
-            ? parseFloat(props.options.AlipayUnitPrice)
-            : 7.3,
-        AlipayMinTopUp:
-          props.options.AlipayMinTopUp !== undefined
-            ? parseInt(props.options.AlipayMinTopUp)
-            : 1,
-        AlipayAmountOptions: props.options.AlipayAmountOptions || '',
-        AlipayAmountDiscount: props.options.AlipayAmountDiscount || '{}',
       };
       setInputs(currentInputs);
       setOriginInputs({ ...currentInputs });
@@ -85,14 +71,6 @@ export default function SettingsPaymentGatewayAlipay(props) {
       if (inputs.AlipayPublicKey !== '') {
         options.push({ key: 'AlipayPublicKey', value: inputs.AlipayPublicKey });
       }
-      if (inputs.AlipayUnitPrice !== undefined && inputs.AlipayUnitPrice !== null) {
-        options.push({ key: 'AlipayUnitPrice', value: inputs.AlipayUnitPrice.toString() });
-      }
-      if (inputs.AlipayMinTopUp !== undefined && inputs.AlipayMinTopUp !== null) {
-        options.push({ key: 'AlipayMinTopUp', value: inputs.AlipayMinTopUp.toString() });
-      }
-      options.push({ key: 'AlipayAmountOptions', value: inputs.AlipayAmountOptions || '' });
-      options.push({ key: 'AlipayAmountDiscount', value: inputs.AlipayAmountDiscount || '{}' });
       if (originInputs['AlipaySandbox'] !== inputs.AlipaySandbox) {
         options.push({ key: 'AlipaySandbox', value: inputs.AlipaySandbox ? 'true' : 'false' });
       }
@@ -144,21 +122,6 @@ export default function SettingsPaymentGatewayAlipay(props) {
                 placeholder={t('支付宝开放平台应用 APPID')}
               />
             </Col>
-            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
-              <Form.InputNumber
-                field='AlipayUnitPrice'
-                precision={2}
-                label={t('充值价格（x元/美金）')}
-                placeholder={t('例如：7，就是7元/美金')}
-              />
-            </Col>
-            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
-              <Form.InputNumber
-                field='AlipayMinTopUp'
-                label={t('最低充值美元数量')}
-                placeholder={t('例如：1，就是最低充值1$')}
-              />
-            </Col>
           </Row>
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }} style={{ marginTop: 16 }}>
             <Col xs={24} sm={24} md={12} lg={12} xl={12}>
@@ -178,23 +141,7 @@ export default function SettingsPaymentGatewayAlipay(props) {
               />
             </Col>
           </Row>
-          <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }} style={{ marginTop: 16 }}>
-            <Col xs={24} sm={24} md={12} lg={12} xl={12}>
-              <Form.Input
-                field='AlipayAmountOptions'
-                label={t('充值额度选项')}
-                placeholder={t('逗号分隔的美元金额，例如 10,20,50,100,200；为空则自动生成')}
-              />
-            </Col>
-            <Col xs={24} sm={24} md={12} lg={12} xl={12}>
-              <Form.Input
-                field='AlipayAmountDiscount'
-                label={t('充值折扣配置（JSON）')}
-                placeholder='{"100":0.9,"500":0.85}'
-                extraText={t('键为充值美金数量，值为折扣率；例如 0.9 表示 9 折')}
-              />
-            </Col>
-          </Row>
+
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }} style={{ marginTop: 16 }}>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Switch
