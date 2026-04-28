@@ -41,10 +41,10 @@ import {
 
 const { Text } = Typography;
 
-// 过滤易支付方式
+// 过滤易支付方式（剔除 stripe / creem / alipay_native，这些有单独按钮）
 function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
+    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem' && m.type !== 'alipay_native',
   );
 }
 
@@ -77,6 +77,7 @@ const SubscriptionPlansCard = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableAlipayTopUp = false,
   billingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
@@ -126,6 +127,31 @@ const SubscriptionPlansCard = ({
       if (res.data?.message === 'success') {
         window.open(res.data.data?.pay_link, '_blank');
         showSuccess(t('已打开支付页面'));
+        closeBuy();
+      } else {
+        const errorMsg =
+          typeof res.data?.data === 'string'
+            ? res.data.data
+            : res.data?.message || t('支付失败');
+        showError(errorMsg);
+      }
+    } catch (e) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const payAlipay = async () => {
+    setPaying(true);
+    try {
+      const res = await API.post('/api/subscription/alipay/pay', {
+        plan_id: selectedPlan.plan.id,
+      });
+      if (res.data?.message === 'success') {
+        // 支付宝原生：后端返回跳转 URL
+        window.open(res.data.data?.pay_url || res.data.data, '_blank');
+        showSuccess(t('已打开支付宝支付页面'));
         closeBuy();
       } else {
         const errorMsg =
@@ -673,6 +699,7 @@ const SubscriptionPlansCard = ({
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
+        enableAlipayTopUp={enableAlipayTopUp}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
@@ -684,6 +711,7 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
+        onPayAlipay={payAlipay}
       />
     </>
   );

@@ -262,18 +262,32 @@ const Home = () => {
 
       {/* ===== NAVBAR ===== */}
       <nav className={`pm-navbar ${navScrolled ? 'scrolled' : ''}`}>
-        <a href='#' className='pm-nav-logo'>
-          <img src={logoImg} alt='PowerMatrix Logo' className='pm-logo-img' />
-        </a>
-        <ul className='pm-nav-links'>
-          <li><a href='#pm-features'>核心优势</a></li>
-          <li><a href='#pm-solutions'>解决方案</a></li>
-          <li><a href='#pm-pricing'>计费方案</a></li>
-          <li><a href='#pm-faq'>开发文档</a></li>
-        </ul>
-        <div className='pm-nav-actions'>
-          <Link to='/login' className='pm-btn-ghost'>登录 / 注册</Link>
-          <Link to='/console' className='pm-btn-nav-primary'>获取 API 密钥</Link>
+        <div className='pm-navbar-inner'>
+          <div className='pm-nav-left'>
+            <a href='#' className='pm-nav-logo'>
+              <img src={logoImg} alt='PowerMatrix Logo' className='pm-logo-img' />
+            </a>
+            <ul className='pm-nav-links'>
+              <li><Link to='/'>首页</Link></li>
+              <li><Link to='/console'>控制台</Link></li>
+              <li><Link to='/pricing'>模型广场</Link></li>
+            </ul>
+          </div>
+          <div className='pm-nav-actions'>
+            <div className='pm-lang-toggle'>
+              <button
+                className={`pm-lang-btn ${i18n.language.startsWith('zh') ? 'active' : ''}`}
+                onClick={() => i18n.changeLanguage('zh-CN')}
+              >中文</button>
+              <span className='pm-lang-sep'>|</span>
+              <button
+                className={`pm-lang-btn ${i18n.language === 'en' ? 'active' : ''}`}
+                onClick={() => i18n.changeLanguage('en')}
+              >EN</button>
+            </div>
+            <Link to='/login' className='pm-btn-ghost'>登录 / 注册</Link>
+            <Link to='/console' className='pm-btn-nav-primary'>获取 API 密钥</Link>
+          </div>
         </div>
       </nav>
 
@@ -536,30 +550,6 @@ const Home = () => {
                   <p className='pm-footer-qr-tip'>微信扫码，联系商务顾问</p>
                 </div>
               </div>
-            </div>
-            <div className='pm-footer-col'>
-              <h4>开发者</h4>
-              <ul>
-                <li><a href='#'>API 文档</a></li>
-                <li><a href='#'>系统状态面板</a></li>
-                <li><a href='#'>GitHub 示例</a></li>
-              </ul>
-            </div>
-            <div className='pm-footer-col'>
-              <h4>产品</h4>
-              <ul>
-                <li><Link to='/pricing'>计费方案</Link></li>
-                <li><Link to='/pricing'>模型广场</Link></li>
-                <li><Link to='/console/topup'>流量充值</Link></li>
-              </ul>
-            </div>
-            <div className='pm-footer-col'>
-              <h4>关于</h4>
-              <ul>
-                <li><Link to='/user-agreement'>服务条款</Link></li>
-                <li><Link to='/privacy-policy'>隐私政策</Link></li>
-                <li><a href='#'>联系我们</a></li>
-              </ul>
             </div>
           </div>
           <div className='pm-footer-bottom'>
