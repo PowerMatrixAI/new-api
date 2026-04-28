@@ -267,11 +267,6 @@ const Home = () => {
             <a href='#' className='pm-nav-logo'>
               <img src={logoImg} alt='PowerMatrix Logo' className='pm-logo-img' />
             </a>
-            <ul className='pm-nav-links'>
-              <li><Link to='/'>首页</Link></li>
-              <li><Link to='/console'>控制台</Link></li>
-              <li><Link to='/pricing'>模型广场</Link></li>
-            </ul>
           </div>
           <div className='pm-nav-actions'>
             <div className='pm-lang-toggle'>
@@ -285,7 +280,6 @@ const Home = () => {
                 onClick={() => i18n.changeLanguage('en')}
               >EN</button>
             </div>
-            <Link to='/login' className='pm-btn-ghost'>登录 / 注册</Link>
             <Link to='/console' className='pm-btn-nav-primary'>获取 API 密钥</Link>
           </div>
         </div>
@@ -319,15 +313,6 @@ const Home = () => {
                   <span className='pm-btn-cta-hint'>⚡ 1分钟极速接入</span>
                 </button>
               </Link>
-              <button
-                className='pm-btn-cta-secondary'
-                onClick={() => {
-                  const docsLink = statusState?.status?.docs_link;
-                  if (docsLink) window.open(docsLink, '_blank');
-                }}
-              >
-                查看开发文档 →
-              </button>
             </div>
           </div>
 
