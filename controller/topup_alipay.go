@@ -162,6 +162,11 @@ func AlipayNotify(c *gin.Context) {
 		_, _ = c.Writer.WriteString("fail")
 		return
 	}
+	if setting.AlipayAppId == "" || params["app_id"] != setting.AlipayAppId {
+		common.SysLog("支付宝回调应用标识不匹配")
+		_, _ = c.Writer.WriteString("fail")
+		return
+	}
 
 	tradeStatus := params["trade_status"]
 	outTradeNo := params["out_trade_no"]
@@ -177,6 +182,24 @@ func AlipayNotify(c *gin.Context) {
 	topUp := model.GetTopUpByTradeNo(outTradeNo)
 	if topUp == nil {
 		common.SysLog(fmt.Sprintf("支付宝回调未找到订单: %s", outTradeNo))
+		_, _ = c.Writer.WriteString("fail")
+		return
+	}
+	if topUp.PaymentMethod != PaymentMethodAlipay {
+		common.SysLog(fmt.Sprintf("支付宝回调支付方式不匹配: %s", outTradeNo))
+		_, _ = c.Writer.WriteString("fail")
+		return
+	}
+
+	actualAmount, err := decimal.NewFromString(strings.TrimSpace(params["total_amount"]))
+	if err != nil || actualAmount.LessThanOrEqual(decimal.Zero) {
+		common.SysLog(fmt.Sprintf("支付宝回调金额无效: %s", outTradeNo))
+		_, _ = c.Writer.WriteString("fail")
+		return
+	}
+	expectedAmount := decimal.NewFromFloat(topUp.Money).Round(2)
+	if actualAmount.Round(2).Cmp(expectedAmount) != 0 {
+		common.SysLog(fmt.Sprintf("支付宝回调金额不匹配: %s", outTradeNo))
 		_, _ = c.Writer.WriteString("fail")
 		return
 	}

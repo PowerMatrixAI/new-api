@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhook"
@@ -46,7 +47,20 @@ type StripePayRequest struct {
 type StripeAdaptor struct {
 }
 
+// stripeTopUpEnabled reports whether the complete Stripe configuration is
+// present. A webhook endpoint must be disabled when any required credential
+// is missing.
+func stripeTopUpEnabled() bool {
+	return strings.TrimSpace(setting.StripeApiSecret) != "" &&
+		strings.TrimSpace(setting.StripeWebhookSecret) != "" &&
+		strings.TrimSpace(setting.StripePriceId) != ""
+}
+
 func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
+	if !stripeTopUpEnabled() {
+		c.JSON(200, gin.H{"message": "error", "data": "Stripe 未启用"})
+		return
+	}
 	if req.Amount < getStripeMinTopup() {
 		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup())})
 		return
@@ -66,6 +80,10 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 }
 
 func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
+	if !stripeTopUpEnabled() {
+		c.JSON(200, gin.H{"message": "error", "data": "Stripe 未启用"})
+		return
+	}
 	if req.PaymentMethod != PaymentMethodStripe {
 		c.JSON(200, gin.H{"message": "error", "data": "不支持的支付渠道"})
 		return
@@ -92,6 +110,12 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
+	paymentAmount := decimal.NewFromFloat(getStripePayMoney(float64(req.Amount), user.Group)).
+		Mul(decimal.NewFromInt(100)).Round(0).IntPart()
+	if paymentAmount <= 0 {
+		c.JSON(200, gin.H{"message": "error", "data": "充值金额无效"})
+		return
+	}
 
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
@@ -107,6 +131,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		UserId:        id,
 		Amount:        req.Amount,
 		Money:         chargedMoney,
+		PaymentAmount: paymentAmount,
 		TradeNo:       referenceId,
 		PaymentMethod: PaymentMethodStripe,
 		CreateTime:    time.Now().Unix(),
@@ -146,6 +171,12 @@ func RequestStripePay(c *gin.Context) {
 }
 
 func StripeWebhook(c *gin.Context) {
+	if !stripeTopUpEnabled() {
+		// Keep the public route unavailable when Stripe is not configured.
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
 	payload, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Printf("解析Stripe Webhook参数失败: %v\n", err)
@@ -185,6 +216,22 @@ func sessionCompleted(event stripe.Event) {
 		log.Println("错误的Stripe Checkout完成状态:", status, ",", referenceId)
 		return
 	}
+	if referenceId == "" {
+		log.Println("Stripe Checkout完成事件未提供支付单号")
+		return
+	}
+
+	paymentStatus := event.GetObjectValue("payment_status")
+	if paymentStatus != "paid" {
+		log.Println("错误的Stripe Checkout支付状态:", paymentStatus, ",", referenceId)
+		return
+	}
+
+	amountTotal, err := strconv.ParseInt(event.GetObjectValue("amount_total"), 10, 64)
+	if err != nil || amountTotal <= 0 {
+		log.Println("错误的Stripe Checkout支付金额:", event.GetObjectValue("amount_total"), ",", referenceId)
+		return
+	}
 
 	// Try complete subscription order first
 	LockOrder(referenceId)
@@ -202,15 +249,14 @@ func sessionCompleted(event stripe.Event) {
 		return
 	}
 
-	err := model.Recharge(referenceId, customerId)
+	err = model.Recharge(referenceId, customerId, amountTotal)
 	if err != nil {
 		log.Println(err.Error(), referenceId)
 		return
 	}
 
-	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
-	log.Printf("收到款项：%s, %.2f(%s)", referenceId, total/100, currency)
+	log.Printf("收到款项：%s, %.2f(%s)", referenceId, float64(amountTotal)/100, currency)
 }
 
 func sessionExpired(event stripe.Event) {

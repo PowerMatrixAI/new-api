@@ -32,3 +32,6 @@ data/
 
 token_estimator_test.go
 /web/.bunfig.toml
+/.codex-go-cache
+/.cursor
+/.github

@@ -12,15 +12,18 @@ import (
 )
 
 type TopUp struct {
-	Id               int     `json:"id"`
-	UserId           int     `json:"user_id" gorm:"index"`
-	Amount           int64   `json:"amount"`
-	Money            float64 `json:"money"`
-	TradeNo          string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod    string  `json:"payment_method" gorm:"type:varchar(50)"`
-	CreateTime       int64   `json:"create_time"`
-	CompleteTime     int64   `json:"complete_time"`
-	Status           string  `json:"status"`
+	Id     int     `json:"id"`
+	UserId int     `json:"user_id" gorm:"index"`
+	Amount int64   `json:"amount"`
+	Money  float64 `json:"money"`
+	// PaymentAmount stores the provider's expected amount in the smallest
+	// currency unit (for example, cents for Stripe).
+	PaymentAmount int64  `json:"payment_amount" gorm:"default:0"`
+	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
+	CreateTime    int64  `json:"create_time"`
+	CompleteTime  int64  `json:"complete_time"`
+	Status        string `json:"status"`
 }
 
 func (topUp *TopUp) Insert() error {
@@ -55,9 +58,12 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
-func Recharge(referenceId string, customerId string) (err error) {
+func Recharge(referenceId string, customerId string, paidAmount int64) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
+	}
+	if paidAmount <= 0 {
+		return errors.New("无效的Stripe支付金额")
 	}
 
 	var quota float64
@@ -72,6 +78,16 @@ func Recharge(referenceId string, customerId string) (err error) {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
+		}
+
+		if topUp.PaymentMethod != "stripe" {
+			return errors.New("充值订单支付方式不匹配")
+		}
+		if topUp.PaymentAmount <= 0 {
+			return errors.New("Stripe订单缺少应付金额")
+		}
+		if topUp.PaymentAmount != paidAmount {
+			return errors.New("Stripe支付金额不匹配")
 		}
 
 		if topUp.Status != common.TopUpStatusPending {
