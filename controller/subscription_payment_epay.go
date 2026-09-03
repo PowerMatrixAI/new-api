@@ -22,6 +22,16 @@ type SubscriptionEpayPayRequest struct {
 	PaymentMethod string `json:"payment_method"`
 }
 
+// getSubscriptionEpayPayMoney converts the plan's USD price to the amount
+// shown to users when the site displays prices in CNY. Epay accepts the
+// payment amount as CNY, while subscription plan prices are stored in USD.
+func getSubscriptionEpayPayMoney(priceAmount float64) float64 {
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+		return priceAmount * operation_setting.USDExchangeRate
+	}
+	return priceAmount
+}
+
 func SubscriptionRequestEpay(c *gin.Context) {
 	var req SubscriptionEpayPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
@@ -74,6 +84,11 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
+	payMoney := getSubscriptionEpayPayMoney(plan.PriceAmount)
+	if payMoney < 0.01 {
+		common.ApiErrorMsg(c, "套餐金额过低")
+		return
+	}
 
 	client := GetEpayClient()
 	if client == nil {
@@ -84,7 +99,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
 		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
+		Money:         payMoney,
 		TradeNo:       tradeNo,
 		PaymentMethod: req.PaymentMethod,
 		CreateTime:    time.Now().Unix(),
@@ -98,7 +113,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(payMoney, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
