@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/thanhpk/randstr"
@@ -61,8 +62,11 @@ func SubscriptionRequestAlipayPay(c *gin.Context) {
 	notifyUrl := system_setting.ServerAddress + "/api/subscription/alipay/notify"
 	returnUrl := system_setting.ServerAddress + "/console/topup?pay=success"
 
-	// 套餐价格单位是 USD，支付宝收人民币，按 AlipayUnitPrice 换算
-	payMoney := plan.PriceAmount * setting.AlipayUnitPrice
+	// 套餐价格单位是 USD，支付宝原生支付收人民币，按站点人民币展示汇率换算
+	payMoney := plan.PriceAmount
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+		payMoney *= operation_setting.USDExchangeRate
+	}
 
 	payLink, err := genAlipayPagePayLink(tradeNo, payMoney, notifyUrl, returnUrl)
 	if err != nil {
