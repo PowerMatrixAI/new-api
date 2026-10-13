@@ -715,7 +715,9 @@ export const calculateModelPrice = ({
         ? formatTokenPrice(inputRatioPriceUSD * Number(record.cache_ratio))
         : null,
       createCachePrice: hasRatioValue(record.create_cache_ratio)
-        ? formatTokenPrice(inputRatioPriceUSD * Number(record.create_cache_ratio))
+        ? formatTokenPrice(
+            inputRatioPriceUSD * Number(record.create_cache_ratio),
+          )
         : null,
       imagePrice: hasRatioValue(record.image_ratio)
         ? formatTokenPrice(inputRatioPriceUSD * Number(record.image_ratio))
@@ -737,13 +739,19 @@ export const calculateModelPrice = ({
     };
   }
 
-  if (record.quota_type === 1) {
+  if (record.quota_type === 1 || record.quota_type === 2) {
     // 按次计费
     const priceUSD = parseFloat(record.model_price) * usedGroupRatio;
     const displayVal = displayPrice(priceUSD);
 
     return {
       price: displayVal,
+      isPerSecond: record.quota_type === 2,
+      videoTiers: record.video_price?.tiers || [],
+      videoTierPrices: (record.video_price?.tiers || []).map((tier) => ({
+        ...tier,
+        displayPrice: displayPrice(tier.price_per_second * usedGroupRatio),
+      })),
       isPerToken: false,
       isTokensDisplay: false,
       usedGroup,
@@ -761,11 +769,32 @@ export const calculateModelPrice = ({
   };
 };
 
-export const getModelPriceItems = (
-  priceData,
-  t,
-  quotaDisplayType = 'USD',
-) => {
+export const getModelPriceItems = (priceData, t, quotaDisplayType = 'USD') => {
+  if (priceData.isPerSecond) {
+    return [
+      {
+        key: 'video-base',
+        label: t('基础价格'),
+        value: priceData.price,
+        suffix: ` / ${t('秒')}`,
+      },
+      ...(priceData.videoTierPrices || []).map((tier, index) => ({
+        key: `video-tier-${index}`,
+        label: [
+          tier.resolution,
+          tier.generate_audio == null
+            ? null
+            : tier.generate_audio
+              ? t('生成音频')
+              : t('不生成音频'),
+        ]
+          .filter(Boolean)
+          .join(' / '),
+        value: tier.displayPrice,
+        suffix: ` / ${t('秒')}`,
+      })),
+    ];
+  }
   if (priceData.isPerToken) {
     if (quotaDisplayType === 'TOKENS' || priceData.isTokensDisplay) {
       return [
@@ -861,7 +890,10 @@ export const getModelPriceItems = (
         value: priceData.audioOutputPrice,
         suffix: unitSuffix,
       },
-    ].filter((item) => item.value !== null && item.value !== undefined && item.value !== '');
+    ].filter(
+      (item) =>
+        item.value !== null && item.value !== undefined && item.value !== '',
+    );
   }
 
   return [
@@ -869,9 +901,12 @@ export const getModelPriceItems = (
       key: 'fixed',
       label: t('模型价格'),
       value: priceData.price,
-      suffix: ` / ${t('次')}`,
+      suffix: ` / ${priceData.isPerSecond ? t('秒') : t('次')}`,
     },
-  ].filter((item) => item.value !== null && item.value !== undefined && item.value !== '');
+  ].filter(
+    (item) =>
+      item.value !== null && item.value !== undefined && item.value !== '',
+  );
 };
 
 // 格式化价格信息（用于卡片视图）

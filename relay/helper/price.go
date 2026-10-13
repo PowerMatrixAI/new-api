@@ -217,6 +217,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 }
 
 func ContainPriceOrRatio(modelName string) bool {
+	if _, ok := ratio_setting.GetVideoPrice(modelName); ok {
+		return true
+	}
 	_, ok := ratio_setting.GetModelPrice(modelName, false)
 	if ok {
 		return true

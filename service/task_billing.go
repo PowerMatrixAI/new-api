@@ -19,8 +19,11 @@ import (
 func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
+	if snap := info.PriceData.VideoBilling; snap != nil {
+		logContent = fmt.Sprintf("操作 %s，视频按秒预扣：%.4g 秒 × $%.6g/秒", info.Action, snap.Usage.Seconds, snap.Pricing.UnitPrice(snap.Usage))
+	}
 	// 支持任务仅按次计费
-	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	if info.PriceData.VideoBilling == nil && common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
 		if len(info.PriceData.OtherRatios) > 0 {
@@ -43,6 +46,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
+	addVideoBillingOther(other, info.PriceData.VideoBilling)
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
@@ -119,7 +123,9 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
+	other["is_task"] = true
 	if bc := task.PrivateData.BillingContext; bc != nil {
+		addVideoBillingOther(other, bc.VideoBilling)
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
@@ -163,6 +169,14 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 
 	// 2. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.VideoBilling != nil {
+		model.UpdateUserUsedQuota(task.UserId, -quota)
+		model.UpdateChannelUsedQuota(task.ChannelId, -quota)
+		task.Quota = 0
+		if err := task.UpdateVideoBilling(); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("persist video refund %s: %v", task.TaskID, err))
+		}
+	}
 
 	// 3. 记录日志
 	other := taskBillingOther(task)
@@ -185,7 +199,8 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
-	if actualQuota <= 0 {
+	isVideo := task.PrivateData.BillingContext != nil && task.PrivateData.BillingContext.VideoBilling != nil
+	if actualQuota < 0 || (actualQuota == 0 && !isVideo) {
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -215,14 +230,20 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	taskAdjustTokenQuota(ctx, task, quotaDelta)
 
 	task.Quota = actualQuota
+	if isVideo {
+		model.UpdateUserUsedQuota(task.UserId, quotaDelta)
+		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+	}
 
 	var logType int
 	var logQuota int
 	if quotaDelta > 0 {
 		logType = model.LogTypeConsume
 		logQuota = quotaDelta
-		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
-		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		if !isVideo {
+			model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
+			model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		}
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta

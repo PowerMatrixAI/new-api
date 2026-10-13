@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -186,6 +187,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, errors.Wrap(err, "convert request payload failed")
 	}
+	if info.PriceData.VideoBilling != nil {
+		body.Duration = lo.ToPtr(dto.IntValue(info.PriceData.VideoBilling.Usage.Seconds))
+	}
 	if info.IsModelMapped {
 		body.Model = info.UpstreamModelName
 	} else {
@@ -323,6 +327,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Progress = "50%"
 	case "succeeded":
 		taskResult.Status = model.TaskStatusSuccess
+		taskResult.VideoUsage = &types.VideoUsage{Seconds: float64(resTask.Duration), Resolution: types.NormalizeVideoResolution(resTask.Resolution)}
 		taskResult.Progress = "100%"
 		taskResult.Url = resTask.Content.VideoURL
 		// 解析 usage 信息用于按倍率计费

@@ -25,6 +25,7 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 )
 
 // ============================
@@ -356,6 +357,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		if videos := resPayload.Data.TaskResult.Videos; len(videos) > 0 {
 			video := videos[0]
 			taskInfo.Url = video.Url
+			seconds := 0.0
+			for _, result := range videos {
+				duration, err := strconv.ParseFloat(result.Duration, 64)
+				if err != nil || !types.ValidVideoSeconds(duration) {
+					seconds = 0
+					break
+				}
+				seconds += duration
+			}
+			taskInfo.VideoUsage = &types.VideoUsage{Seconds: seconds}
 		}
 		if tokens, err := strconv.ParseFloat(resPayload.Data.FinalUnitDeduction, 64); err == nil {
 			rounded := int(math.Ceil(tokens))

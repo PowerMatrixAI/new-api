@@ -84,6 +84,7 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	TaskVideoUsage    *types.VideoUsage
 	TokenId           int
 	TokenKey          string
 	TokenGroup        string
@@ -668,16 +669,17 @@ type TaskRelayInfo struct {
 }
 
 type TaskSubmitReq struct {
-	Prompt         string                 `json:"prompt"`
-	Model          string                 `json:"model,omitempty"`
-	Mode           string                 `json:"mode,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	Images         []string               `json:"images,omitempty"`
-	Size           string                 `json:"size,omitempty"`
-	Duration       int                    `json:"duration,omitempty"`
-	Seconds        string                 `json:"seconds,omitempty"`
-	InputReference string                 `json:"input_reference,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	DurationProvided bool                   `json:"-"`
+	Prompt           string                 `json:"prompt"`
+	Model            string                 `json:"model,omitempty"`
+	Mode             string                 `json:"mode,omitempty"`
+	Image            string                 `json:"image,omitempty"`
+	Images           []string               `json:"images,omitempty"`
+	Size             string                 `json:"size,omitempty"`
+	Duration         int                    `json:"duration,omitempty"`
+	Seconds          string                 `json:"seconds,omitempty"`
+	InputReference   string                 `json:"input_reference,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {
@@ -703,6 +705,7 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	}
 
 	if len(aux.Duration) > 0 {
+		t.DurationProvided = true
 		var durationInt int
 		if err := common.Unmarshal(aux.Duration, &durationInt); err == nil {
 			t.Duration = durationInt
@@ -750,15 +753,16 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int    `json:"code"`
-	TaskID           string `json:"task_id"`
-	Status           string `json:"status"`
-	Reason           string `json:"reason,omitempty"`
-	Url              string `json:"url,omitempty"`
-	RemoteUrl        string `json:"remote_url,omitempty"`
-	Progress         string `json:"progress,omitempty"`
-	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
-	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	VideoUsage       *types.VideoUsage `json:"video_usage,omitempty"`
+	Code             int               `json:"code"`
+	TaskID           string            `json:"task_id"`
+	Status           string            `json:"status"`
+	Reason           string            `json:"reason,omitempty"`
+	Url              string            `json:"url,omitempty"`
+	RemoteUrl        string            `json:"remote_url,omitempty"`
+	Progress         string            `json:"progress,omitempty"`
+	CompletionTokens int               `json:"completion_tokens,omitempty"` // 用于按倍率计费
+	TotalTokens      int               `json:"total_tokens,omitempty"`      // 用于按倍率计费
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

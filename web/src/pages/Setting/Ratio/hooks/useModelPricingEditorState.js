@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
+import { readVideoPricing, serializeVideoPricing } from './modelPricingVideo';
 
 export const PAGE_SIZE = 10;
 export const PRICE_SUFFIX = '$/1M tokens';
@@ -27,6 +28,8 @@ const EMPTY_MODEL = {
   name: '',
   billingMode: 'per-token',
   fixedPrice: '',
+  videoPrice: '',
+  videoTiers: [],
   inputPrice: '',
   completionPrice: '',
   lockedCompletionRatio: '',
@@ -129,6 +132,7 @@ const buildModelState = (name, sourceMaps) => {
     sourceMaps.AudioCompletionRatio[name],
   );
   const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+  const videoPricing = sourceMaps.VideoPrice[name];
   const inputPrice = ratioToBasePrice(modelRatio);
   const inputPriceNumber = toNumberOrNull(inputPrice);
   const audioInputPrice =
@@ -139,7 +143,12 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode: videoPricing
+      ? 'per-second'
+      : hasValue(fixedPrice)
+        ? 'per-request'
+        : 'per-token',
+    ...readVideoPricing(videoPricing),
     fixedPrice,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
@@ -187,21 +196,25 @@ const buildModelState = (name, sourceMaps) => {
       audioCompletionRatio,
     },
     hasConflict:
-      hasValue(fixedPrice) &&
-      [
-        modelRatio,
-        completionRatio,
-        cacheRatio,
-        createCacheRatio,
-        imageRatio,
-        audioRatio,
-        audioCompletionRatio,
-      ].some(hasValue),
+      (Boolean(videoPricing) &&
+        (hasValue(fixedPrice) || hasValue(modelRatio))) ||
+      (hasValue(fixedPrice) &&
+        [
+          modelRatio,
+          completionRatio,
+          cacheRatio,
+          createCacheRatio,
+          imageRatio,
+          audioRatio,
+          audioCompletionRatio,
+        ].some(hasValue)),
   };
 };
 
 export const isBasePricingUnset = (model) =>
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  !hasValue(model.fixedPrice) &&
+  !hasValue(model.inputPrice) &&
+  !hasValue(model.videoPrice);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -219,9 +232,7 @@ export const getModelWarnings = (model, t) => {
   ].some(hasValue);
 
   if (model.hasConflict) {
-    warnings.push(
-      t('当前模型同时存在按次价格和倍率配置，保存时会按当前计费方式覆盖。'),
-    );
+    warnings.push(t('当前模型存在多种计费配置，保存时会按当前计费方式覆盖。'));
   }
 
   if (
@@ -262,6 +273,9 @@ export const getModelWarnings = (model, t) => {
 };
 
 export const buildSummaryText = (model, t) => {
+  if (model.billingMode === 'per-second' && hasValue(model.videoPrice)) {
+    return `${t('按秒计费')} $${model.videoPrice} / ${t('秒')}${model.videoTiers.length ? `，${t('价格档位')} ${model.videoTiers.length}` : ''}`;
+  }
   if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
     return `${t('按次')} $${model.fixedPrice} / ${t('次')}`;
   }
@@ -295,6 +309,7 @@ export const buildOptionalFieldToggles = (model) => ({
 
 const serializeModel = (model, t) => {
   const result = {
+    VideoPrice: null,
     ModelPrice: null,
     ModelRatio: null,
     CompletionRatio: null,
@@ -304,6 +319,11 @@ const serializeModel = (model, t) => {
     AudioRatio: null,
     AudioCompletionRatio: null,
   };
+
+  if (model.billingMode === 'per-second') {
+    result.VideoPrice = serializeVideoPricing(model, t);
+    return result;
+  }
 
   if (model.billingMode === 'per-request') {
     if (hasValue(model.fixedPrice)) {
@@ -413,6 +433,17 @@ const serializeModel = (model, t) => {
 
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
+  if (model.billingMode === 'per-second') {
+    return [
+      {
+        key: 'VideoPrice',
+        label: t('视频每秒价格'),
+        value: hasValue(model.videoPrice)
+          ? `$${model.videoPrice}/${t('秒')}`
+          : t('空'),
+      },
+    ];
+  }
 
   if (model.billingMode === 'per-request') {
     return [
@@ -562,6 +593,7 @@ export function useModelPricingEditorState({
   useEffect(() => {
     const sourceMaps = {
       ModelPrice: parseOptionJSON(options.ModelPrice),
+      VideoPrice: parseOptionJSON(options.VideoPrice),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
       CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
@@ -575,6 +607,7 @@ export function useModelPricingEditorState({
     const names = new Set([
       ...candidateModelNames,
       ...Object.keys(sourceMaps.ModelPrice),
+      ...Object.keys(sourceMaps.VideoPrice),
       ...Object.keys(sourceMaps.ModelRatio),
       ...Object.keys(sourceMaps.CompletionRatio),
       ...Object.keys(sourceMaps.CompletionRatioMeta),
@@ -865,6 +898,8 @@ export function useModelPricingEditorState({
           ...model,
           billingMode: selectedModel.billingMode,
           fixedPrice: selectedModel.fixedPrice,
+          videoPrice: selectedModel.videoPrice,
+          videoTiers: selectedModel.videoTiers.map((tier) => ({ ...tier })),
           inputPrice: selectedModel.inputPrice,
           completionPrice: selectedModel.completionPrice,
           cachePrice: selectedModel.cachePrice,
@@ -923,6 +958,7 @@ export function useModelPricingEditorState({
     setLoading(true);
     try {
       const output = {
+        VideoPrice: {},
         ModelPrice: {},
         ModelRatio: {},
         CompletionRatio: {},
@@ -942,18 +978,28 @@ export function useModelPricingEditorState({
         });
       }
 
-      const requestQueue = Object.entries(output).map(([key, value]) =>
-        API.put('/api/option/', {
-          key,
-          value: JSON.stringify(value, null, 2),
-        }),
-      );
+      const requestQueue = Object.entries(output)
+        .filter(([key]) => key !== 'VideoPrice')
+        .map(([key, value]) =>
+          API.put('/api/option/', {
+            key,
+            value: JSON.stringify(value, null, 2),
+          }),
+        );
 
       const results = await Promise.all(requestQueue);
       for (const res of results) {
         if (!res?.data?.success) {
           throw new Error(res?.data?.message || t('保存失败，请重试'));
         }
+      }
+
+      const videoResult = await API.put('/api/option/', {
+        key: 'VideoPrice',
+        value: JSON.stringify(output.VideoPrice, null, 2),
+      });
+      if (!videoResult?.data?.success) {
+        throw new Error(videoResult?.data?.message || t('保存失败，请重试'));
       }
 
       showSuccess(t('保存成功'));
@@ -988,6 +1034,13 @@ export function useModelPricingEditorState({
     handleOptionalFieldToggle,
     handleNumericFieldChange,
     handleBillingModeChange,
+    handleVideoTiersChange: (tiers) => {
+      if (selectedModel)
+        upsertModel(selectedModel.name, (model) => ({
+          ...model,
+          videoTiers: tiers,
+        }));
+    },
     handleSubmit,
     addModel,
     deleteModel,

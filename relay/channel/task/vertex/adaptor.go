@@ -177,6 +177,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if params.DurationSeconds == 0 && req.Duration > 0 {
 		params.DurationSeconds = req.Duration
 	}
+	if info.PriceData.VideoBilling != nil {
+		params.DurationSeconds = int(info.PriceData.VideoBilling.Usage.Seconds)
+	}
 	if params.Resolution == "" && req.Size != "" {
 		params.Resolution = geminitask.SizeToVeoResolution(req.Size)
 	}

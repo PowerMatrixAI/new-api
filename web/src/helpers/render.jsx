@@ -1621,11 +1621,29 @@ function renderPriceSimpleCore({
 }
 
 export function renderTaskBillingProcess(other, content) {
-  if (other?.task_id != null) {
-    return renderBillingArticle(
-      [content].filter(Boolean),
-      { showReferenceNote: false },
+  if (other?.billing_mode === 'video_per_second') {
+    const ratio = other.user_group_ratio ?? other.group_ratio ?? 1;
+    const text = i18next.t(
+      '视频按秒：{{seconds}} 秒 × ${{price}}/秒 × 分组倍率 {{ratio}} = ${{total}}',
+      {
+        seconds: other.video_seconds,
+        price: other.video_price,
+        ratio,
+        total: (
+          Number(other.video_seconds) *
+          Number(other.video_price) *
+          Number(ratio)
+        ).toFixed(6),
+      },
     );
+    return renderBillingArticle([text, content].filter(Boolean), {
+      showReferenceNote: false,
+    });
+  }
+  if (other?.task_id != null) {
+    return renderBillingArticle([content].filter(Boolean), {
+      showReferenceNote: false,
+    });
   }
   return renderBillingArticle([
     buildBillingText('任务预扣费（将在任务完成后按实际token重算）'),

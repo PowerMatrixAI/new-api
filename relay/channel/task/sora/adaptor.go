@@ -18,6 +18,7 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -158,6 +159,10 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if snap := info.PriceData.VideoBilling; snap != nil && info.Action != constant.TaskActionRemix {
+				bodyMap["seconds"] = strconv.FormatFloat(snap.Usage.Seconds, 'f', -1, 64)
+				delete(bodyMap, "duration")
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -173,8 +178,14 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
 		writer.WriteField("model", info.UpstreamModelName)
+		if snap := info.PriceData.VideoBilling; snap != nil && info.Action != constant.TaskActionRemix {
+			writer.WriteField("seconds", strconv.FormatFloat(snap.Usage.Seconds, 'f', -1, 64))
+		}
 		for key, values := range formData.Value {
 			if key == "model" {
+				continue
+			}
+			if info.PriceData.VideoBilling != nil && (key == "seconds" || key == "duration") {
 				continue
 			}
 			for _, v := range values {
@@ -304,6 +315,8 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "completed":
 		taskResult.Status = model.TaskStatusSuccess
+		seconds, _ := strconv.ParseFloat(resTask.Seconds, 64)
+		taskResult.VideoUsage = &types.VideoUsage{Seconds: seconds, Resolution: types.NormalizeVideoResolution(resTask.Size)}
 		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
